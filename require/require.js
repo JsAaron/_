@@ -1256,6 +1256,7 @@ var requirejs, require, define;
              */
             configure: function(cfg) {
                 //Make sure the baseUrl ends in a slash.
+                //如果结尾不是/补全
                 if (cfg.baseUrl) {
                     if (cfg.baseUrl.charAt(cfg.baseUrl.length - 1) !== '/') {
                         cfg.baseUrl += '/';

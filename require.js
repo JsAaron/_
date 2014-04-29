@@ -1,98 +1,154 @@
-  /**
-   * 请求模块
-   * @param {String|Array} list 依赖列表
-   * @param {Function} factory 模块工厂
-   * @param {String} parent ? 父路径，没有使用种子模块的根路径或配置项
-   * @api public
-   */
-  window.require = function(list, factory, parent) {
-  	// 用于检测它的依赖是否都为2
-  	var deps = {},
-  		// 用于保存依赖模块的返回值
-  		args = [],
-  		// 需要安装的模块数
-  		dn = 0,
-  		// 已安装完的模块数
-  		cn = 0,
-  		id = parent || "callback" + setTimeout("1");
-  	parent = parent || basepath;
-  	String(list).replace($.rword, function(el) {
-  		var url = loadJSCSS(el, parent)
-  		if (url) {
-  			dn++;
-  			if (modules[url] && modules[url].state === 2) {
-  				cn++;
-  			}
-  			if (!deps[url]) {
-  				args.push(url);
-  				deps[url] = "司徒正美"; //去重
-  			}
-  		}
-  	});
-  	modules[id] = { //创建一个对象,记录模块的加载情况与其他信息
-  		id: id,
-  		factory: factory,
-  		deps: deps,
-  		args: args,
-  		state: 1
-  	};
-  	if (dn === cn) { //如果需要安装的等于已安装好的
-  		fireFactory(id, args, factory); //安装到框架中
-  	} else {
-  		//放到检测列队中,等待checkDeps处理
-  		loadings.unshift(id);
-  	}
-  	checkDeps();
+/****************************************************************
+ *     支持AMD,CMD模块加载方式
+ *     @by Aaron
+ *             github:https://github.com/JsAaron/aaronRequire
+ *             blog:http://www.cnblogs.com/aaronjs/
+ *****************************************************************/
+;
+(function(r) {
+  if (typeof module === "object" && typeof require === "function") {
+    module.exports.require = r.require;
+    module.exports.define = r.define;
+  } else {
+    require = r.require;
+    define = r.define;
+  }
+})(function() {
+
+  var objproto = Object.prototype,
+    objtoString = objproto.toString,
+    arrproto = Array.prototype,
+    nativeForEach = arrproto.forEach,
+    modules = {},
+    pushStack = {};
+
+  function each(obj, callback, context) {
+    if (obj == null) return;
+    //如果支持本地forEach方法,并且是函数
+    if (nativeForEach && obj.forEach === nativeForEach) {
+      obj.forEach(callback, context);
+    } else if (obj.length === +obj.length) {
+      //for循环迭代
+      for (var i = 0, l = obj.length; i < l; i++) {
+        if (callback.call(context, obj[i], i, obj) === breaker) return;
+      }
+    }
   };
 
+  function isFunction(it) {
+    return objtoString.call(it) === '[object Function]';
+  }
 
+  function isArray(it) {
+    return objtoString.call(it) === '[object Array]';
+  }
 
-  /**
-   * 定义模块
-   * @param {String} id ? 模块ID
-   * @param {Array} deps ? 依赖列表
-   * @param {Function} factory 模块工厂
-   * @api public
-   */
-  window.define = function(id, deps, factory) {
+  //导入模块
+  var exp = {
+    
+    require: function(id, callback) {
+      //数组形式
+      //require(['domReady', 'App'], function(domReady, app) {});
+      if (isArray(id)) {
+        if (id.length > 1) {
+          return makeRequire(id, callback);
+        }
+        id = id[0];
+      }
 
-	var args = [].slice.call(arguments);
+      if (!modules[id]) {
+        throw "module " + id + " not found";
+      }
 
-  	if (typeof id === "string") {
-  		var _id = args.shift();
-  	}
+      if (callback) {
+        var module = build(modules[id]);
+        callback(module)
+        return module;
+      } else {
+        if (modules[id].factory) {
+          return build(modules[id]);
+        }
+        return modules[id].exports;
+      }
+    },
+    //定义模块
+    define: function(id, deps, factory, post) { //模块名,依赖列表,模块本身
+      if (modules[id]) {
+        throw "module " + id + " 模块已存在!";
+      }
+      //存在依赖导入
+      if (arguments.length > 2) {
+        modules[id] = {
+          id: id,
+          deps: deps,
+          factory: factory
+        };
+        //后加载
+        post && exp.require(id, function(exp) {
+          post(exp)
+        })
+      } else {
+        factory = deps;
+        modules[id] = {
+          id: id,
+          factory: factory
+        };
+      }
+    }
+  }
 
-	//上线合并后能直接得到模块ID,否则寻找当前正在解析中的script节点的src作为模块ID
-  	//现在除了safari外，我们都能直接通过getCurrentScript一步到位得到当前执行的script节点，
-  	//safari可通过onload+delay闭包组合解决
-  	id = modules[id] && modules[id].state >= 1 ? _id : getCurrentScript();
+  //解析依赖关系
+    function parseDeps(module) {
+      var deps = module['deps'],
+        temp = [];
+      each(deps, function(id, index) {
+        temp.push(build(modules[id]))
+      })
+      return temp;
+    }
 
-  	if (!modules[name] && _id) {
-  		modules[name] = {
-  			id: name,
-  			factory: factory,
-  			state: 1
-  		}
-  	}
+    function build(module) {
+      var depsList, existMod,
+        factory = module['factory'],
+        id = module['id'];
 
+      if (existMod = pushStack[id]) { //去重复执行
+        return existMod;
+      }
 
-  	factory = args[1];
-  	factory.id = _id; //用于调试
-  	factory.delay = function(id) {
-  		args.push(id);
-  		var isCycle = true;
-  		try {
-  			isCycle = checkCycle(modules[id].deps, id);
-  		} catch (e) {}
-  		if (isCycle) {
-  			$.error(id + "模块与之前的某些模块存在循环依赖");
-  		}
-  		delete factory.delay; //释放内存
-  		require.apply(null, args); //0,1,2 --> 1,2,0
-  	};
-  	if (id) {
-  		factory.delay(id, args);
-  	} else { //先进先出
-  		factorys.push(factory);
-  	}
-  };
+      //接口点，将数据或方法定义在其上则将其暴露给外部调用。
+      module.exports = {};
+
+      //去重
+      delete module.factory;
+
+      if (module['deps']) {
+        //依赖数组列表
+        depsList = parseDeps(module);
+        module.exports = factory.apply(module, depsList);
+      } else {
+        // exports 支持直接 return 或 modulejs.exports 方式
+        module.exports = factory(exp.require, module.exports, module) || module.exports;
+      }
+
+      pushStack[id] = module.exports;
+
+      return module.exports;
+    }
+
+    //解析require模块
+    function makeRequire(ids, callback) {
+      var r = ids.length,
+        shim = {};
+      each(ids, function(name) {
+        shim[name] = build(modules[name])
+      })
+      if (callback) {
+        callback.call(null, shim);
+      } else {
+        shim = null;
+      }
+    }
+
+  return exp;
+}());

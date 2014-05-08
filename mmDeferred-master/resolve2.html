@@ -1,0 +1,40 @@
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <title></title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <script src="deferred.js"></script>
+
+        <script>
+            window.onload = function() {
+                var oldConsole = window.console
+
+                window.console = {
+                    log: function(str) {
+                        if (oldConsole) {
+                            oldConsole.log(str)
+                        }
+                        var div = document.createElement("div")
+                        div.innerHTML = window.JSON ? JSON.stringify(str) : str;
+                        document.body.appendChild(div);
+                    }
+                }
+
+
+                var dfd = Deferred()
+                dfd.resolve(2000);//<---只处理第一个，因为处理了就是fulfilled状态，
+                //由于resolve时，Deferred的回调还没有就绪，它就延后执行
+                dfd.resolve(1000);//<---这个不执行
+                dfd.promise.then(function(a) {
+                    console.log(a)
+                })
+
+            }
+
+        </script>
+    </head>
+    <body>
+        <div>TEST by 司徒正美</div>
+    </body>
+</html>
